@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVR
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from scipy import stats
 import warnings
 
@@ -514,6 +514,8 @@ def create_prediction_model(df, model_type='Random Forest', train_ratio=0.8):
     
     # Métriques
     mse = mean_squared_error(y_test, predictions)
+    rmse = np.sqrt(mse)  # Root Mean Squared Error (plus intuitif)
+    mae = mean_absolute_error(y_test, predictions)  # Mean Absolute Error
     r2 = r2_score(y_test, predictions)
     
     # Feature importance (seulement pour Random Forest)
@@ -566,7 +568,7 @@ def create_prediction_model(df, model_type='Random Forest', train_ratio=0.8):
             'p_value': p_values
         }).sort_values('p_value')
     
-    return model, feature_columns, test_data, predictions, r2, mse, feature_importance, coefficients_df
+    return model, feature_columns, test_data, predictions, r2, mse, rmse, mae, feature_importance, coefficients_df
 
 # Initialiser les variables de session pour le cache
 if 'cached_df' not in st.session_state:
@@ -721,17 +723,17 @@ if should_load_data:
             # Calcul des 3 modèles en parallèle
             with st.spinner('🤖 Entraînement des 3 modèles...'):
                 # Random Forest
-                rf_model, rf_features, rf_test, rf_pred, rf_r2, rf_mse, rf_importance, _ = create_prediction_model(
+                rf_model, rf_features, rf_test, rf_pred, rf_r2, rf_mse, rf_rmse, rf_mae, rf_importance, _ = create_prediction_model(
                     df, model_type='Random Forest', train_ratio=train_test_ratio/100
                 )
                 
                 # Régression Linéaire
-                lr_model, lr_features, lr_test, lr_pred, lr_r2, lr_mse, lr_importance, lr_coefficients = create_prediction_model(
+                lr_model, lr_features, lr_test, lr_pred, lr_r2, lr_mse, lr_rmse, lr_mae, lr_importance, lr_coefficients = create_prediction_model(
                     df, model_type='Régression Linéaire', train_ratio=train_test_ratio/100
                 )
                 
                 # SVM
-                svm_model, svm_features, svm_test, svm_pred, svm_r2, svm_mse, svm_importance, _ = create_prediction_model(
+                svm_model, svm_features, svm_test, svm_pred, svm_r2, svm_mse, svm_rmse, svm_mae, svm_importance, _ = create_prediction_model(
                     df, model_type='SVM', train_ratio=train_test_ratio/100
                 )
             
@@ -826,11 +828,15 @@ if should_load_data:
             
             # Random Forest
             with subtab1:
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("📊 R² Score", f"{rf_r2:.4f}")
                 with col2:
-                    st.metric("📉 MSE", f"{rf_mse:.6f}")
+                    st.metric("🎯 RMSE", f"{rf_rmse*100:.2f}%", help="Erreur quadratique moyenne sur les rendements quotidiens")
+                with col3:
+                    st.metric("📌 MAE", f"{rf_mae*100:.2f}%", help="Erreur absolue moyenne sur les rendements quotidiens")
+                
+                st.info("ℹ️ Le RMSE de {:.2f}% signifie que le modèle se trompe en moyenne de ±{:.2f}% sur la prédiction du rendement du jour suivant.".format(rf_rmse*100, rf_rmse*100))
                 
                 st.caption("🔍 Top 10 Features Importantes")
                 top_features = rf_importance.head(10)
@@ -874,11 +880,15 @@ if should_load_data:
             
             # Régression Linéaire
             with subtab2:
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("📊 R² Score", f"{lr_r2:.4f}")
                 with col2:
-                    st.metric("📉 MSE", f"{lr_mse:.6f}")
+                    st.metric("🎯 RMSE", f"{lr_rmse*100:.2f}%", help="Erreur quadratique moyenne sur les rendements quotidiens")
+                with col3:
+                    st.metric("📌 MAE", f"{lr_mae*100:.2f}%", help="Erreur absolue moyenne sur les rendements quotidiens")
+                
+                st.info("ℹ️ Le RMSE de {:.2f}% signifie que le modèle se trompe en moyenne de ±{:.2f}% sur la prédiction du rendement du jour suivant.".format(lr_rmse*100, lr_rmse*100))
                 
                 # Coefficients et p-values
                 if lr_coefficients is not None:
@@ -931,11 +941,15 @@ if should_load_data:
             
             # SVM
             with subtab3:
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("📊 R² Score", f"{svm_r2:.4f}")
                 with col2:
-                    st.metric("📉 MSE", f"{svm_mse:.6f}")
+                    st.metric("🎯 RMSE", f"{svm_rmse*100:.2f}%", help="Erreur quadratique moyenne sur les rendements quotidiens")
+                with col3:
+                    st.metric("📌 MAE", f"{svm_mae*100:.2f}%", help="Erreur absolue moyenne sur les rendements quotidiens")
+                
+                st.info("ℹ️ Le RMSE de {:.2f}% signifie que le modèle se trompe en moyenne de ±{:.2f}% sur la prédiction du rendement du jour suivant.".format(svm_rmse*100, svm_rmse*100))
                 
                 st.info("ℹ️ SVM utilise un kernel RBF pour capturer des relations non-linéaires complexes.")
                 
@@ -1133,21 +1147,21 @@ elif has_cached_data:
         # Calcul des 3 modèles en parallèle avec le nouveau ratio
         with st.spinner('🤖 Entraînement des 3 modèles...'):
             # Random Forest
-            rf_model, rf_features, rf_test, rf_pred, rf_r2, rf_mse, rf_importance, _ = create_prediction_model(
-                df, model_type='Random Forest', train_ratio=train_test_ratio/100
-            )
+                rf_model, rf_features, rf_test, rf_pred, rf_r2, rf_mse, rf_rmse, rf_mae, rf_importance, _ = create_prediction_model(
+                    df, model_type='Random Forest', train_ratio=train_test_ratio/100
+                )
+                
+                # Régression Linéaire
+                lr_model, lr_features, lr_test, lr_pred, lr_r2, lr_mse, lr_rmse, lr_mae, lr_importance, lr_coefficients = create_prediction_model(
+                    df, model_type='Régression Linéaire', train_ratio=train_test_ratio/100
+                )
+                
+                # SVM
+                svm_model, svm_features, svm_test, svm_pred, svm_r2, svm_mse, svm_rmse, svm_mae, svm_importance, _ = create_prediction_model(
+                    df, model_type='SVM', train_ratio=train_test_ratio/100
+                )
             
-            # Régression Linéaire
-            lr_model, lr_features, lr_test, lr_pred, lr_r2, lr_mse, lr_importance, lr_coefficients = create_prediction_model(
-                df, model_type='Régression Linéaire', train_ratio=train_test_ratio/100
-            )
-            
-            # SVM
-            svm_model, svm_features, svm_test, svm_pred, svm_r2, svm_mse, svm_importance, _ = create_prediction_model(
-                df, model_type='SVM', train_ratio=train_test_ratio/100
-            )
-        
-        # Préparer les features pour les prédictions
+            # Préparer les features pour les prédictions
         features_df = df.copy()
         lookback_days = 5
         
@@ -1238,11 +1252,15 @@ elif has_cached_data:
         
         # Random Forest
         with subtab1:
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("📊 R² Score", f"{rf_r2:.4f}")
             with col2:
-                st.metric("📉 MSE", f"{rf_mse:.6f}")
+                st.metric("🎯 RMSE", f"{rf_rmse*100:.2f}%", help="Erreur quadratique moyenne sur les rendements quotidiens")
+            with col3:
+                st.metric("📌 MAE", f"{rf_mae*100:.2f}%", help="Erreur absolue moyenne sur les rendements quotidiens")
+            
+            st.info("ℹ️ Le RMSE de {:.2f}% signifie que le modèle se trompe en moyenne de ±{:.2f}% sur la prédiction du rendement du jour suivant.".format(rf_rmse*100, rf_rmse*100))
             
             st.caption("🔍 Top 10 Features Importantes")
             top_features = rf_importance.head(10)
@@ -1286,11 +1304,15 @@ elif has_cached_data:
         
         # Régression Linéaire
         with subtab2:
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("📊 R² Score", f"{lr_r2:.4f}")
             with col2:
-                st.metric("📉 MSE", f"{lr_mse:.6f}")
+                st.metric("🎯 RMSE", f"{lr_rmse*100:.2f}%", help="Erreur quadratique moyenne sur les rendements quotidiens")
+            with col3:
+                st.metric("📌 MAE", f"{lr_mae*100:.2f}%", help="Erreur absolue moyenne sur les rendements quotidiens")
+            
+            st.info("ℹ️ Le RMSE de {:.2f}% signifie que le modèle se trompe en moyenne de ±{:.2f}% sur la prédiction du rendement du jour suivant.".format(lr_rmse*100, lr_rmse*100))
             
             # Coefficients et p-values
             if lr_coefficients is not None:
@@ -1343,11 +1365,15 @@ elif has_cached_data:
         
         # SVM
         with subtab3:
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("📊 R² Score", f"{svm_r2:.4f}")
             with col2:
-                st.metric("📉 MSE", f"{svm_mse:.6f}")
+                st.metric("🎯 RMSE", f"{svm_rmse*100:.2f}%", help="Erreur quadratique moyenne sur les rendements quotidiens")
+            with col3:
+                st.metric("📌 MAE", f"{svm_mae*100:.2f}%", help="Erreur absolue moyenne sur les rendements quotidiens")
+            
+            st.info("ℹ️ Le RMSE de {:.2f}% signifie que le modèle se trompe en moyenne de ±{:.2f}% sur la prédiction du rendement du jour suivant.".format(svm_rmse*100, svm_rmse*100))
             
             st.info("ℹ️ SVM utilise un kernel RBF pour capturer des relations non-linéaires complexes.")
             
@@ -1479,4 +1505,4 @@ else:
         - **AMZN** - Amazon
         """)
     
-    st.info("👈 Entrez un ticker dans la sidebar et cliquez sur **Analyser** pour commencer!")
+    st.info("👈 Entrez un ticker dans la sidebar et cliquez sur **Analyser** pour commencer! salut Antoine hehe et ferme la")
