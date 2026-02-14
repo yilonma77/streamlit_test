@@ -9,6 +9,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error, r2_score
+from scipy import stats
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -539,7 +540,44 @@ def create_prediction_model(df, model_type='Random Forest', train_ratio=0.8):
             'importance': [0] * len(feature_columns)
         })
     
-    return model, feature_columns, test_data, predictions, r2, mse, feature_importance
+    # Coefficients et p-values pour régression linéaire
+    coefficients_df = None
+    if model_type == 'Régression Linéaire':
+        # Calculer les p-values
+        n = len(X_train)
+        k = len(feature_columns)
+        
+        # Prédictions sur train
+        y_pred_train = model.predict(X_train)
+        
+        # Résidus
+        residuals = y_train - y_pred_train
+        
+        # MSE des résidus
+        mse_residuals = np.sum(residuals**2) / (n - k - 1)
+        
+        # Matrice de variance-covariance
+        X_train_with_intercept = np.column_stack([np.ones(n), X_train])
+        var_covar = mse_residuals * np.linalg.inv(X_train_with_intercept.T @ X_train_with_intercept)
+        
+        # Erreurs standard
+        se = np.sqrt(np.diagonal(var_covar))
+        
+        # T-statistiques
+        coefs = np.concatenate([[model.intercept_], model.coef_])
+        t_stats = coefs / se
+        
+        # P-values (two-tailed test)
+        p_values = 2 * (1 - stats.t.cdf(np.abs(t_stats), n - k - 1))
+        
+        # Créer DataFrame avec intercept + features
+        coefficients_df = pd.DataFrame({
+            'feature': ['Intercept'] + feature_columns,
+            'coefficient': coefs,
+            'p_value': p_values
+        }).sort_values('p_value')
+    
+    return model, feature_columns, test_data, predictions, r2, mse, feature_importance, coefficients_df
 
 # Main application logic
 if analyze_button:
@@ -662,21 +700,98 @@ if analyze_button:
             # Calcul des 3 modèles en parallèle
             with st.spinner('🤖 Entraînement des 3 modèles...'):
                 # Random Forest
-                rf_model, rf_features, rf_test, rf_pred, rf_r2, rf_mse, rf_importance = create_prediction_model(
+                rf_model, rf_features, rf_test, rf_pred, rf_r2, rf_mse, rf_importance, _ = create_prediction_model(
                     df, model_type='Random Forest', train_ratio=train_test_ratio/100
                 )
                 
                 # Régression Linéaire
-                lr_model, lr_features, lr_test, lr_pred, lr_r2, lr_mse, lr_importance = create_prediction_model(
+                lr_model, lr_features, lr_test, lr_pred, lr_r2, lr_mse, lr_importance, lr_coefficients = create_prediction_model(
                     df, model_type='Régression Linéaire', train_ratio=train_test_ratio/100
                 )
                 
                 # SVM
-                svm_model, svm_features, svm_test, svm_pred, svm_r2, svm_mse, svm_importance = create_prediction_model(
+                svm_model, svm_features, svm_test, svm_pred, svm_r2, svm_mse, svm_importance, _ = create_prediction_model(
                     df, model_type='SVM', train_ratio=train_test_ratio/100
                 )
             
-            # Comparaison rapide
+            # Préparer les features pour les prédictions
+            features_df = df.copy()
+            lookback_days = 5
+            
+            for i in range(1, lookback_days + 1):
+                features_df[f'Close_lag_{i}'] = features_df['Close'].shift(i)
+                features_df[f'Volume_lag_{i}'] = features_df['Volume'].shift(i)
+                features_df[f'Return_lag_{i}'] = features_df['Daily_Return'].shift(i)
+            
+            features_df['Price_MA20_ratio'] = features_df['Close'] / features_df['MA_20']
+            features_df['Price_MA50_ratio'] = features_df['Close'] / features_df['MA_50']
+            features_df['RSI_level'] = features_df['RSI']
+            features_df['MACD_signal'] = (features_df['MACD'] > features_df['MACD_Signal']).astype(int)
+            features_df['BB_position'] = (features_df['Close'] - features_df['BB_Lower']) / (features_df['BB_Upper'] - features_df['BB_Lower'])
+            features_df['Vol_ratio'] = features_df['Volatility'] / features_df['Volatility'].mean()
+            
+            # Calculer les prédictions pour les 3 modèles
+            current_price = df['Close'].iloc[-1]
+            
+            # RF Prediction
+            rf_latest_features = features_df[rf_features].iloc[-1:].dropna(axis=1)
+            rf_common_features = [col for col in rf_features if col in rf_latest_features.columns]
+            rf_next_pred = 0
+            if len(rf_common_features) > 0:
+                rf_latest_X = rf_latest_features[rf_common_features]
+                rf_next_pred = rf_model.predict(rf_latest_X.values.reshape(1, -1))[0]
+            
+            # LR Prediction
+            lr_latest_features = features_df[lr_features].iloc[-1:].dropna(axis=1)
+            lr_common_features = [col for col in lr_features if col in lr_latest_features.columns]
+            lr_next_pred = 0
+            if len(lr_common_features) > 0:
+                lr_latest_X = lr_latest_features[lr_common_features]
+                lr_next_pred = lr_model.predict(lr_latest_X.values.reshape(1, -1))[0]
+            
+            # SVM Prediction
+            svm_latest_features = features_df[svm_features].iloc[-1:].dropna(axis=1)
+            svm_common_features = [col for col in svm_features if col in svm_latest_features.columns]
+            svm_next_pred = 0
+            if len(svm_common_features) > 0:
+                svm_latest_X = svm_latest_features[svm_common_features]
+                svm_next_pred = svm_model.predict(svm_latest_X.values.reshape(1, -1))[0]
+            
+            # Résumé des prédictions
+            st.markdown("### 🔮 Prédictions du Prochain Jour")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                rf_target = current_price * (1 + rf_next_pred)
+                rf_direction = "📈" if rf_next_pred > 0 else "📉"
+                st.metric(
+                    "🌲 Random Forest",
+                    f"${rf_target:.2f}",
+                    f"{rf_next_pred*100:.2f}% {rf_direction}"
+                )
+            
+            with col2:
+                lr_target = current_price * (1 + lr_next_pred)
+                lr_direction = "📈" if lr_next_pred > 0 else "📉"
+                st.metric(
+                    "📈 Régression Linéaire",
+                    f"${lr_target:.2f}",
+                    f"{lr_next_pred*100:.2f}% {lr_direction}"
+                )
+            
+            with col3:
+                svm_target = current_price * (1 + svm_next_pred)
+                svm_direction = "📈" if svm_next_pred > 0 else "📉"
+                st.metric(
+                    "🎯 SVM",
+                    f"${svm_target:.2f}",
+                    f"{svm_next_pred*100:.2f}% {svm_direction}"
+                )
+            
+            st.caption(f"💰 Prix actuel: ${current_price:.2f}")
+            st.markdown("---")
+            
+            # Comparaison rapide des métriques
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("🌲 Random Forest R²", f"{rf_r2:.4f}")
@@ -718,36 +833,13 @@ if analyze_button:
                 )
                 st.plotly_chart(fig_importance, use_container_width=True)
                 
-                # Prédiction pour RF
-                st.caption("🔮 Prédiction Prochain Jour")
-                features_df = df.copy()
-                lookback_days = 5
+                # Prédiction pour RF (déjà calculée)
+                st.caption("🔮 Détails de la Prédiction")
                 
-                for i in range(1, lookback_days + 1):
-                    features_df[f'Close_lag_{i}'] = features_df['Close'].shift(i)
-                    features_df[f'Volume_lag_{i}'] = features_df['Volume'].shift(i)
-                    features_df[f'Return_lag_{i}'] = features_df['Daily_Return'].shift(i)
+                c1, c2, c3 = st.columns(3)
                 
-                features_df['Price_MA20_ratio'] = features_df['Close'] / features_df['MA_20']
-                features_df['Price_MA50_ratio'] = features_df['Close'] / features_df['MA_50']
-                features_df['RSI_level'] = features_df['RSI']
-                features_df['MACD_signal'] = (features_df['MACD'] > features_df['MACD_Signal']).astype(int)
-                features_df['BB_position'] = (features_df['Close'] - features_df['BB_Lower']) / (features_df['BB_Upper'] - features_df['BB_Lower'])
-                features_df['Vol_ratio'] = features_df['Volatility'] / features_df['Volatility'].mean()
-                
-                latest_features = features_df[rf_features].iloc[-1:].dropna(axis=1)
-                
-                if not latest_features.empty:
-                    common_features = [col for col in rf_features if col in latest_features.columns]
-                    latest_X = latest_features[common_features]
-                    
-                    if len(latest_X.columns) > 0:
-                        next_day_pred = rf_model.predict(latest_X.values.reshape(1, -1))[0]
-                        
-                        c1, c2, c3 = st.columns(3)
-                        
-                        with c1:
-                            st.metric("📈 Rdt Prédit", f"{next_day_pred*100:.2f}%")
+                with c1:
+                    st.metric("📈 Rdt Prédit", f"{rf_next_pred*100:.2f}%")
                         
                         with c2:
                             direction = "HAUSSIÈRE 📈" if next_day_pred > 0 else "BAISSIÈRE 📉"
@@ -769,36 +861,54 @@ if analyze_button:
                 with col2:
                     st.metric("📉 MSE", f"{lr_mse:.6f}")
                 
+                # Coefficients et p-values
+                if lr_coefficients is not None:
+                    st.caption("📊 Coefficients et Significativité (Top 15)")
+                    
+                    # Afficher seulement les top 15
+                    top_coefs = lr_coefficients.head(15)
+                    
+                    # Formater le DataFrame pour affichage
+                    display_df = top_coefs.copy()
+                    display_df['coefficient'] = display_df['coefficient'].apply(lambda x: f"{x:.6f}")
+                    display_df['p_value'] = display_df['p_value'].apply(lambda x: f"{x:.4f}")
+                    display_df['significance'] = top_coefs['p_value'].apply(
+                        lambda x: '***' if x < 0.001 else '**' if x < 0.01 else '*' if x < 0.05 else ''
+                    )
+                    
+                    st.dataframe(
+                        display_df,
+                        column_config={
+                            "feature": "Feature",
+                            "coefficient": "Coefficient",
+                            "p_value": "P-Value",
+                            "significance": "Sig."
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    st.caption("*** p<0.001, ** p<0.01, * p<0.05")
+                
                 st.info("ℹ️ La régression linéaire modélise une relation linéaire entre les features et le rendement.")
                 
-                # Prédiction pour LR
-                st.caption("🔮 Prédiction Prochain Jour")
+                # Prédiction pour LR (déjà calculée)
+                st.caption("🔮 Détails de la Prédiction")
                 
-                latest_features = features_df[lr_features].iloc[-1:].dropna(axis=1)
+                c1, c2, c3 = st.columns(3)
                 
-                if not latest_features.empty:
-                    common_features = [col for col in lr_features if col in latest_features.columns]
-                    latest_X = latest_features[common_features]
-                    
-                    if len(latest_X.columns) > 0:
-                        next_day_pred = lr_model.predict(latest_X.values.reshape(1, -1))[0]
-                        
-                        c1, c2, c3 = st.columns(3)
-                        
-                        with c1:
-                            st.metric("📈 Rdt Prédit", f"{next_day_pred*100:.2f}%")
-                        
-                        with c2:
-                            direction = "HAUSSIÈRE 📈" if next_day_pred > 0 else "BAISSIÈRE 📉"
-                            st.metric("🎯 Direction", direction)
-                        
-                        with c3:
-                            current_price = df['Close'].iloc[-1]
-                            target_price = current_price * (1 + next_day_pred)
-                            st.metric("💰 Prix Cible", f"${target_price:.2f}")
-                        
-                        confidence_level = "FORTE ⭐⭐⭐" if abs(next_day_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(next_day_pred) > 0.01 else "FAIBLE ⭐"
-                        st.info(f"🎯 Confiance: {confidence_level}")
+                with c1:
+                    st.metric("📈 Rdt Prédit", f"{lr_next_pred*100:.2f}%")
+                
+                with c2:
+                    direction = "HAUSSIÈRE 📈" if lr_next_pred > 0 else "BAISSIÈRE 📉"
+                    st.metric("🎯 Direction", direction)
+                
+                with c3:
+                    st.metric("💰 Prix Cible", f"${lr_target:.2f}")
+                
+                confidence_level = "FORTE ⭐⭐⭐" if abs(lr_next_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(lr_next_pred) > 0.01 else "FAIBLE ⭐"
+                st.info(f"🎯 Confiance: {confidence_level}")
             
             # SVM
             with subtab3:
@@ -810,34 +920,23 @@ if analyze_button:
                 
                 st.info("ℹ️ SVM utilise un kernel RBF pour capturer des relations non-linéaires complexes.")
                 
-                # Prédiction pour SVM
-                st.caption("🔮 Prédiction Prochain Jour")
+                # Prédiction pour SVM (déjà calculée)
+                st.caption("🔮 Détails de la Prédiction")
                 
-                latest_features = features_df[svm_features].iloc[-1:].dropna(axis=1)
+                c1, c2, c3 = st.columns(3)
                 
-                if not latest_features.empty:
-                    common_features = [col for col in svm_features if col in latest_features.columns]
-                    latest_X = latest_features[common_features]
-                    
-                    if len(latest_X.columns) > 0:
-                        next_day_pred = svm_model.predict(latest_X.values.reshape(1, -1))[0]
-                        
-                        c1, c2, c3 = st.columns(3)
-                        
-                        with c1:
-                            st.metric("📈 Rdt Prédit", f"{next_day_pred*100:.2f}%")
-                        
-                        with c2:
-                            direction = "HAUSSIÈRE 📈" if next_day_pred > 0 else "BAISSIÈRE 📉"
-                            st.metric("🎯 Direction", direction)
-                        
-                        with c3:
-                            current_price = df['Close'].iloc[-1]
-                            target_price = current_price * (1 + next_day_pred)
-                            st.metric("💰 Prix Cible", f"${target_price:.2f}")
-                        
-                        confidence_level = "FORTE ⭐⭐⭐" if abs(next_day_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(next_day_pred) > 0.01 else "FAIBLE ⭐"
-                        st.info(f"🎯 Confiance: {confidence_level}")
+                with c1:
+                    st.metric("📈 Rdt Prédit", f"{svm_next_pred*100:.2f}%")
+                
+                with c2:
+                    direction = "HAUSSIÈRE 📈" if svm_next_pred > 0 else "BAISSIÈRE 📉"
+                    st.metric("🎯 Direction", direction)
+                
+                with c3:
+                    st.metric("💰 Prix Cible", f"${svm_target:.2f}")
+                
+                confidence_level = "FORTE ⭐⭐⭐" if abs(svm_next_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(svm_next_pred) > 0.01 else "FAIBLE ⭐"
+                st.info(f"🎯 Confiance: {confidence_level}")
         
         # Rapport de synthèse COMPACT après les tabs
         st.markdown("---")
