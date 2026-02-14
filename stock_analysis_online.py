@@ -15,19 +15,90 @@ warnings.filterwarnings('ignore')
 st.set_page_config(
     page_title="📈 Analyse Technique d'Actions",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Titre principal
-st.title("📈 Analyse Technique Complète d'Actions")
-st.markdown("---")
+# CSS personnalisé pour un design moderne
+st.markdown("""
+<style>
+    /* Amélioration de la lisibilité */
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    
+    /* Titres plus compacts */
+    h1 {
+        margin-bottom: 0.5rem !important;
+        font-size: 2rem !important;
+    }
+    
+    h2 {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+        font-size: 1.5rem !important;
+    }
+    
+    h3 {
+        margin-top: 0.3rem !important;
+        margin-bottom: 0.3rem !important;
+        font-size: 1.2rem !important;
+    }
+    
+    /* Métriques plus compactes */
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem !important;
+    }
+    
+    /* Tabs stylisés */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding: 8px 16px;
+        background-color: rgba(128, 128, 128, 0.1);
+        border-radius: 4px;
+    }
+    
+    /* Compact info boxes */
+    .stAlert {
+        padding: 0.5rem 1rem !important;
+        margin: 0.5rem 0 !important;
+    }
+    
+    /* Sidebar plus élégante */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, rgba(17,24,39,0.05) 0%, rgba(17,24,39,0.02) 100%);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Initialiser le thème dans session state
+if 'theme' not in st.session_state:
+    st.session_state.theme = 'dark'
+
+# Titre principal compact
+st.title("📈 Analyse Technique Pro")
 
 # Sidebar pour la configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
     
+    # Toggle thème light/dark
+    theme_col1, theme_col2 = st.columns([1, 1])
+    with theme_col1:
+        if st.button("🌙 Dark" if st.session_state.theme == 'dark' else "☀️ Light", use_container_width=True):
+            st.session_state.theme = 'light' if st.session_state.theme == 'dark' else 'dark'
+            st.rerun()
+    with theme_col2:
+        st.caption(f"Thème: {st.session_state.theme.capitalize()}")
+    
+    st.markdown("---")
+    
     # Input du ticker
-    ticker = st.text_input("🎯 Ticker de l'action:", value="MU", help="Ex: AAPL, TSLA, GOOGL, MU").upper()
+    ticker = st.text_input("🎯 Ticker:", value="MU", help="Ex: AAPL, TSLA, GOOGL").upper()
     
     # Période d'analyse
     period_options = {
@@ -36,14 +107,14 @@ with st.sidebar:
         "3 ans": 1095,
         "5 ans": 1825
     }
-    period_label = st.selectbox("📅 Période d'analyse:", list(period_options.keys()), index=3)
+    period_label = st.selectbox("📅 Période:", list(period_options.keys()), index=3)
     period_days = period_options[period_label]
     
     # Bouton d'analyse
-    analyze_button = st.button("🚀 Lancer l'Analyse", type="primary", use_container_width=True)
+    analyze_button = st.button("🚀 Analyser", type="primary", use_container_width=True)
     
     st.markdown("---")
-    st.info("💡 Entrez un ticker (ex: AAPL, TSLA, NVDA) et cliquez sur 'Lancer l'Analyse'")
+    st.caption("💡 Entrez un ticker et cliquez sur Analyser")
 
 # Fonction pour calculer les indicateurs techniques
 def calculate_indicators(df):
@@ -190,26 +261,32 @@ def create_main_chart(df, ticker_symbol):
                   row=4, col=1)
     
     # Configuration du layout
+    # Template basé sur le thème
+    template = 'plotly_dark' if st.session_state.theme == 'dark' else 'plotly_white'
+    
     fig.update_layout(
         title=dict(
-            text=f'<b>Analyse Technique Complète - {ticker_symbol}</b>',
+            text=f'<b>{ticker_symbol} - Analyse Technique</b>',
             x=0.5,
-            font=dict(size=24, color='white')
+            font=dict(size=20)
         ),
-        template='plotly_dark',
-        height=1200,
+        template=template,
+        height=1000,
         showlegend=True,
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=1.02,
+            y=1.01,
             xanchor="right",
-            x=1
-        )
+            x=1,
+            font=dict(size=10)
+        ),
+        margin=dict(t=50, b=30, l=50, r=50)
     )
     
-    fig.update_xaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
-    fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
+    grid_color = 'rgba(255,255,255,0.1)' if st.session_state.theme == 'dark' else 'rgba(0,0,0,0.1)'
+    fig.update_xaxes(showgrid=True, gridcolor=grid_color)
+    fig.update_yaxes(showgrid=True, gridcolor=grid_color)
     
     return fig
 
@@ -281,15 +358,18 @@ def create_volatility_chart(df, ticker_symbol):
     fig_vol.update_xaxes(title_text="Variation Volume (%)", row=2, col=2)
     fig_vol.update_yaxes(title_text="Rendement Prix (%)", row=2, col=2)
     
+    template = 'plotly_dark' if st.session_state.theme == 'dark' else 'plotly_white'
+    
     fig_vol.update_layout(
         title=dict(
-            text=f'<b>Analyse de la Volatilité et des Rendements - {ticker_symbol}</b>',
+            text=f'<b>{ticker_symbol} - Volatilité & Rendements</b>',
             x=0.5,
-            font=dict(size=20, color='white')
+            font=dict(size=18)
         ),
-        template='plotly_dark',
-        height=800,
-        showlegend=True
+        template=template,
+        height=650,
+        showlegend=True,
+        margin=dict(t=50, b=30, l=50, r=50)
     )
     
     return fig_vol
@@ -346,16 +426,19 @@ def create_support_resistance_chart(df, ticker_symbol):
     ))
     
     # Configuration
+    template = 'plotly_dark' if st.session_state.theme == 'dark' else 'plotly_white'
+    
     fig_sr.update_layout(
         title=dict(
-            text=f'<b>Analyse Support/Résistance - {ticker_symbol} (6 derniers mois)</b>',
+            text=f'<b>{ticker_symbol} - Support/Résistance (6M)</b>',
             x=0.5,
-            font=dict(size=20, color='white')
+            font=dict(size=18)
         ),
-        template='plotly_dark',
-        height=600,
+        template=template,
+        height=550,
         xaxis_rangeslider_visible=False,
-        showlegend=True
+        showlegend=True,
+        margin=dict(t=50, b=30, l=50, r=50)
     )
     
     return fig_sr
@@ -438,37 +521,34 @@ if analyze_button:
             # Informations sur l'entreprise
             info = stock.info
             
-        st.success(f"✅ Données récupérées: {len(data)} jours de {data.index[0].strftime('%Y-%m-%d')} à {data.index[-1].strftime('%Y-%m-%d')}")
-        
-        # Informations générales
-        st.header(f"🏢 {info.get('longName', ticker)}")
-        
-        col1, col2, col3, col4 = st.columns(4)
+        # En-tête compact avec les infos essentielles
+        col1, col2 = st.columns([3, 1])
         with col1:
-            st.metric("💼 Secteur", info.get('sector', 'N/A'))
+            st.subheader(f"🏢 {info.get('longName', ticker)}")
         with col2:
-            st.metric("🏭 Industrie", info.get('industry', 'N/A')[:20] + "...")
-        with col3:
-            market_cap = info.get('marketCap', 0)
-            if market_cap > 0:
-                st.metric("💰 Cap. Boursière", f"${market_cap/1e9:.1f}B")
-            else:
-                st.metric("💰 Cap. Boursière", "N/A")
-        with col4:
-            employees = info.get('fullTimeEmployees', 'N/A')
-            st.metric("👥 Employés", f"{employees:,}" if isinstance(employees, int) else employees)
+            st.caption(f"📅 {len(data)} jours • {data.index[0].strftime('%Y-%m-%d')} → {data.index[-1].strftime('%Y-%m-%d')}")
         
-        st.markdown("---")
+        # Infos entreprise en compact
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.caption(f"💼 {info.get('sector', 'N/A')}")
+        with c2:
+            st.caption(f"🏭 {info.get('industry', 'N/A')[:18]}...")
+        with c3:
+            market_cap = info.get('marketCap', 0)
+            st.caption(f"💰 ${market_cap/1e9:.1f}B" if market_cap > 0 else "💰 N/A")
+        with c4:
+            employees = info.get('fullTimeEmployees', 'N/A')
+            st.caption(f"👥 {employees:,}" if isinstance(employees, int) else "👥 N/A")
         
         # Calcul des indicateurs
-        with st.spinner('📊 Calcul des indicateurs techniques...'):
+        with st.spinner('📊 Calcul des indicateurs...'):
             df = calculate_indicators(data)
         
-        # Affichage des métriques clés
-        st.header("📊 Métriques Actuelles")
-        
         latest = df.iloc[-1]
-        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        # Métriques clés en haut
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         
         with col1:
             price_change = ((latest['Close'] - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
@@ -483,143 +563,146 @@ if analyze_button:
             st.metric(f"{macd_status} MACD", f"{latest['MACD']:.4f}")
         
         with col4:
-            st.metric("💨 Volatilité", f"{latest['Volatility']:.1f}%")
+            st.metric("💨 Vol.", f"{latest['Volatility']:.1f}%")
         
         with col5:
             total_return = ((latest['Close'] / df['Close'].iloc[0] - 1) * 100)
-            st.metric(f"📈 Rdt Total ({period_label})", f"{total_return:+.1f}%")
+            st.metric(f"📈 Rdt {period_label}", f"{total_return:+.1f}%")
         
-        st.markdown("---")
-        
-        # Graphique principal
-        st.header("📈 Analyse Technique Complète")
-        with st.spinner('📊 Génération du graphique principal...'):
-            main_chart = create_main_chart(df, ticker)
-            st.plotly_chart(main_chart, use_container_width=True)
-        
-        st.markdown("---")
-        
-        # Graphique de volatilité
-        st.header("💨 Analyse de Volatilité et Rendements")
-        with st.spinner('📊 Génération de l\'analyse de volatilité...'):
-            vol_chart = create_volatility_chart(df, ticker)
-            st.plotly_chart(vol_chart, use_container_width=True)
-        
-        # Statistiques de rendements
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("📊 Rendement Moyen Journalier", f"{df['Daily_Return'].mean()*100:.3f}%")
-        with col2:
-            st.metric("📊 Écart-type", f"{df['Daily_Return'].std()*100:.3f}%")
-        with col3:
+        with col6:
             sharpe = (df['Daily_Return'].mean() / df['Daily_Return'].std()) * np.sqrt(252)
-            st.metric("⚡ Ratio de Sharpe", f"{sharpe:.3f}")
+            st.metric("⚡ Sharpe", f"{sharpe:.2f}")
         
         st.markdown("---")
         
-        # Graphique Support/Résistance
-        st.header("🎯 Niveaux Support/Résistance")
-        with st.spinner('📊 Génération de l\'analyse support/résistance...'):
-            sr_chart = create_support_resistance_chart(df, ticker)
-            st.plotly_chart(sr_chart, use_container_width=True)
+        # Tabs pour organiser le contenu
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Graphiques Techniques", "💨 Volatilité", "🎯 Support/Résistance", "🤖 ML & Prédictions"])
         
-        # Niveaux techniques
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("🔻 Support", f"${latest['Support']:.2f}")
-        with col2:
-            st.metric("🔺 Résistance", f"${latest['Resistance']:.2f}")
-        with col3:
-            st.metric("💰 VWAP", f"${latest['VWAP']:.2f}")
-        with col4:
-            support_dist = ((latest['Close'] - latest['Support']) / latest['Close']) * 100
-            st.metric("📏 Distance Support", f"{support_dist:.1f}%")
+        with tab1:
+            with st.spinner('📊 Génération...'):
+                main_chart = create_main_chart(df, ticker)
+                st.plotly_chart(main_chart, use_container_width=True)
         
-        st.markdown("---")
-        
-        # Modélisation prédictive
-        st.header("🤖 Analyse Prédictive (Machine Learning)")
-        
-        with st.spinner('🤖 Entraînement du modèle Random Forest...'):
-            rf_model, feature_columns, test_data, rf_pred, rf_r2, rf_mse, feature_importance = create_prediction_model(df)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("📊 R² Score", f"{rf_r2:.4f}")
-        with col2:
-            st.metric("📉 MSE", f"{rf_mse:.6f}")
-        
-        # Feature importance
-        st.subheader("🔍 Top 10 Features Importantes")
-        top_features = feature_importance.head(10)
-        
-        fig_importance = go.Figure()
-        fig_importance.add_trace(
-            go.Bar(
-                x=top_features['importance'],
-                y=top_features['feature'],
-                orientation='h',
-                marker_color='#45aaf2'
-            )
-        )
-        fig_importance.update_layout(
-            template='plotly_dark',
-            height=400,
-            xaxis_title="Importance",
-            yaxis_title="Feature"
-        )
-        st.plotly_chart(fig_importance, use_container_width=True)
-        
-        # Prédiction pour le prochain jour
-        st.subheader("🔮 Prédiction pour le Prochain Jour de Trading")
-        
-        # Préparer les dernières features
-        features_df = df.copy()
-        lookback_days = 5
-        
-        for i in range(1, lookback_days + 1):
-            features_df[f'Close_lag_{i}'] = features_df['Close'].shift(i)
-            features_df[f'Volume_lag_{i}'] = features_df['Volume'].shift(i)
-            features_df[f'Return_lag_{i}'] = features_df['Daily_Return'].shift(i)
-        
-        features_df['Price_MA20_ratio'] = features_df['Close'] / features_df['MA_20']
-        features_df['Price_MA50_ratio'] = features_df['Close'] / features_df['MA_50']
-        features_df['RSI_level'] = features_df['RSI']
-        features_df['MACD_signal'] = (features_df['MACD'] > features_df['MACD_Signal']).astype(int)
-        features_df['BB_position'] = (features_df['Close'] - features_df['BB_Lower']) / (features_df['BB_Upper'] - features_df['BB_Lower'])
-        features_df['Vol_ratio'] = features_df['Volatility'] / features_df['Volatility'].mean()
-        
-        latest_features = features_df[feature_columns].iloc[-1:].dropna(axis=1)
-        
-        if not latest_features.empty:
-            common_features = [col for col in feature_columns if col in latest_features.columns]
-            latest_X = latest_features[common_features]
+        with tab2:
+            with st.spinner('📊 Génération...'):
+                vol_chart = create_volatility_chart(df, ticker)
+                st.plotly_chart(vol_chart, use_container_width=True)
             
-            if len(latest_X.columns) > 0:
-                next_day_pred = rf_model.predict(latest_X.values.reshape(1, -1))[0]
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("📈 Rendement Prédit", f"{next_day_pred*100:.2f}%")
-                
-                with col2:
-                    direction = "HAUSSIÈRE 📈" if next_day_pred > 0 else "BAISSIÈRE 📉"
-                    st.metric("🎯 Direction", direction)
-                
-                with col3:
-                    current_price = df['Close'].iloc[-1]
-                    target_price = current_price * (1 + next_day_pred)
-                    st.metric("💰 Prix Cible Estimé", f"${target_price:.2f}")
-                
-                # Niveau de confiance
-                confidence_level = "FORTE ⭐⭐⭐" if abs(next_day_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(next_day_pred) > 0.01 else "FAIBLE ⭐"
-                st.info(f"🎯 Niveau de confiance: {confidence_level}")
+            # Statistiques compactes
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("📊 Rdt Moy. Jour", f"{df['Daily_Return'].mean()*100:.3f}%")
+            with c2:
+                st.metric("📊 Écart-type", f"{df['Daily_Return'].std()*100:.3f}%")
+            with c3:
+                max_dd = ((df['Close'].cummax() - df['Close']) / df['Close'].cummax()).max() * 100
+                st.metric("📉 Drawdown Max", f"-{max_dd:.1f}%")
+            with c4:
+                annualized_return = ((df['Close'].iloc[-1] / df['Close'].iloc[0]) ** (252/len(df)) - 1) * 100
+                st.metric("📅 Rdt Annualisé", f"{annualized_return:+.1f}%")
         
+        with tab3:
+            with st.spinner('📊 Génération...'):
+                sr_chart = create_support_resistance_chart(df, ticker)
+                st.plotly_chart(sr_chart, use_container_width=True)
+            
+            # Niveaux techniques
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("🔻 Support", f"${latest['Support']:.2f}")
+            with c2:
+                st.metric("🔺 Résistance", f"${latest['Resistance']:.2f}")
+            with c3:
+                st.metric("💰 VWAP", f"${latest['VWAP']:.2f}")
+            with c4:
+                support_dist = ((latest['Close'] - latest['Support']) / latest['Close']) * 100
+                st.metric("📏 Distance Support", f"{support_dist:.1f}%")
+        
+        with tab4:
+            st.subheader("🤖 Machine Learning - Random Forest")
+        
+            st.subheader("🤖 Machine Learning - Random Forest")
+            
+            with st.spinner('🤖 Entraînement du modèle...'):
+                rf_model, feature_columns, test_data, rf_pred, rf_r2, rf_mse, feature_importance = create_prediction_model(df)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("📊 R² Score", f"{rf_r2:.4f}")
+            with col2:
+                st.metric("📉 MSE", f"{rf_mse:.6f}")
+            
+            # Feature importance compact
+            st.caption("🔍 Top 10 Features Importantes")
+            top_features = feature_importance.head(10)
+            
+            fig_importance = go.Figure()
+            fig_importance.add_trace(
+                go.Bar(
+                    x=top_features['importance'],
+                    y=top_features['feature'],
+                    orientation='h',
+                    marker_color='#45aaf2'
+                )
+            )
+            template = 'plotly_dark' if st.session_state.theme == 'dark' else 'plotly_white'
+            fig_importance.update_layout(
+                template=template,
+                height=350,
+                margin=dict(t=20, b=20, l=10, r=10),
+                xaxis_title="Importance",
+                yaxis_title=""
+            )
+            st.plotly_chart(fig_importance, use_container_width=True)
+            
+            # Prédiction compacte
+            st.caption("🔮 Prédiction Prochain Jour")
+            
+            # Préparer les dernières features
+            features_df = df.copy()
+            lookback_days = 5
+            
+            for i in range(1, lookback_days + 1):
+                features_df[f'Close_lag_{i}'] = features_df['Close'].shift(i)
+                features_df[f'Volume_lag_{i}'] = features_df['Volume'].shift(i)
+                features_df[f'Return_lag_{i}'] = features_df['Daily_Return'].shift(i)
+            
+            features_df['Price_MA20_ratio'] = features_df['Close'] / features_df['MA_20']
+            features_df['Price_MA50_ratio'] = features_df['Close'] / features_df['MA_50']
+            features_df['RSI_level'] = features_df['RSI']
+            features_df['MACD_signal'] = (features_df['MACD'] > features_df['MACD_Signal']).astype(int)
+            features_df['BB_position'] = (features_df['Close'] - features_df['BB_Lower']) / (features_df['BB_Upper'] - features_df['BB_Lower'])
+            features_df['Vol_ratio'] = features_df['Volatility'] / features_df['Volatility'].mean()
+            
+            latest_features = features_df[feature_columns].iloc[-1:].dropna(axis=1)
+            
+            if not latest_features.empty:
+                common_features = [col for col in feature_columns if col in latest_features.columns]
+                latest_X = latest_features[common_features]
+                
+                if len(latest_X.columns) > 0:
+                    next_day_pred = rf_model.predict(latest_X.values.reshape(1, -1))[0]
+                    
+                    c1, c2, c3 = st.columns(3)
+                    
+                    with c1:
+                        st.metric("📈 Rdt Prédit", f"{next_day_pred*100:.2f}%")
+                    
+                    with c2:
+                        direction = "HAUSSIÈRE 📈" if next_day_pred > 0 else "BAISSIÈRE 📉"
+                        st.metric("🎯 Direction", direction)
+                    
+                    with c3:
+                        current_price = df['Close'].iloc[-1]
+                        target_price = current_price * (1 + next_day_pred)
+                        st.metric("💰 Prix Cible", f"${target_price:.2f}")
+                    
+                    confidence_level = "FORTE ⭐⭐⭐" if abs(next_day_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(next_day_pred) > 0.01 else "FAIBLE ⭐"
+                    st.info(f"🎯 Confiance: {confidence_level}")
+        
+        # Rapport de synthèse COMPACT après les tabs
         st.markdown("---")
-        
-        # Rapport de synthèse
-        st.header("🎯 Rapport de Synthèse")
+        st.subheader("🎯 Synthèse & Recommandation")
         
         # Analyse de tendance
         current_price = df['Close'].iloc[-1]
@@ -643,131 +726,92 @@ if analyze_button:
         # Tendance globale
         if bullish_signals >= 4:
             trend = "🟢 HAUSSIÈRE FORTE"
-            trend_color = "success"
         elif bullish_signals >= 3:
             trend = "🟡 HAUSSIÈRE MODÉRÉE"
-            trend_color = "warning"
         elif bullish_signals >= 2:
             trend = "🟠 NEUTRE"
-            trend_color = "info"
         else:
             trend = "🔴 BAISSIÈRE"
-            trend_color = "error"
         
-        st.subheader(f"Tendance Globale: {trend}")
-        
-        # Analyse détaillée
+        # Analyse et recommandation en 2 colonnes
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**📈 Analyse Tendancielle:**")
-            st.write(f"- Prix vs MA20: {'✅' if current_price > ma20 else '❌'} ${ma20:.2f}")
-            st.write(f"- Prix vs MA50: {'✅' if current_price > ma50 else '❌'} ${ma50:.2f}")
-            st.write(f"- Prix vs MA200: {'✅' if current_price > ma200 else '❌'} ${ma200:.2f}")
+            st.markdown(f"**Tendance: {trend}**")
+            st.caption("📈 Signaux Techniques:")
+            st.caption(f"• MA20: {'✅' if current_price > ma20 else '❌'} ${ma20:.2f}")
+            st.caption(f"• MA50: {'✅' if current_price > ma50 else '❌'} ${ma50:.2f}")
+            st.caption(f"• MA200: {'✅' if current_price > ma200 else '❌'} ${ma200:.2f}")
             
-            st.markdown("**⚡ Indicateurs:**")
             rsi_status = "SURACHETÉ ⚠️" if current_rsi > 70 else "SURVENDU ✅" if current_rsi < 30 else "NEUTRE"
-            st.write(f"- RSI ({current_rsi:.1f}): {rsi_status}")
+            st.caption(f"• RSI ({current_rsi:.1f}): {rsi_status}")
             macd_status = "HAUSSIER ✅" if current_macd > 0 else "BAISSIER ⚠️"
-            st.write(f"- MACD: {macd_status}")
+            st.caption(f"• MACD: {macd_status}")
             vol_status = "ÉLEVÉE ⚠️" if current_vol > avg_vol * 1.2 else "NORMALE ✅"
-            st.write(f"- Volatilité: {vol_status}")
+            st.caption(f"• Volatilité: {vol_status}")
         
         with col2:
-            st.markdown("**💡 Recommandations:**")
+            st.markdown("**💡 Recommandation:**")
             
             if bullish_signals >= 4:
-                st.success("✅ ACHAT RECOMMANDÉ")
-                st.write("- Tendance haussière confirmée")
-                st.write("- Momentum positif")
+                st.success("✅ ACHAT RECOMMANDÉ - Tendance forte")
             elif bullish_signals >= 3:
-                st.warning("🟡 ACHAT AVEC PRUDENCE")
-                st.write("- Tendance globalement positive")
-                st.write("- Surveiller les résistances")
+                st.warning("🟡 ACHAT PRUDENT - Tendance positive")
             elif bullish_signals >= 2:
-                st.info("⏸️ ATTENTE")
-                st.write("- Signaux mixtes")
-                st.write("- Attendre une direction claire")
+                st.info("⏸️ ATTENTE - Signaux mixtes")
             else:
-                st.error("❌ ÉVITER/VENDRE")
-                st.write("- Tendance baissière dominante")
-                st.write("- Risque élevé")
+                st.error("❌ ÉVITER - Tendance baissière")
             
-            st.markdown("**🎯 Niveaux Stratégiques:**")
+            st.caption("**🎯 Niveaux Clés:**")
             support = df['Support'].iloc[-1]
             resistance = df['Resistance'].iloc[-1]
-            st.write(f"- 🟢 Zone d'achat: ${support:.2f} - ${support*1.02:.2f}")
-            st.write(f"- 🔴 Stop Loss: ${support*0.98:.2f}")
-            st.write(f"- 🎯 Objectif 1: ${resistance*.98:.2f}")
-            st.write(f"- 🎯 Objectif 2: ${resistance*1.02:.2f}")
+            st.caption(f"🟢 Achat: ${support:.2f}-${support*1.02:.2f}")
+            st.caption(f"🔴 Stop: ${support*0.98:.2f}")
+            st.caption(f"🎯 Obj: ${resistance*.98:.2f}-${resistance*1.02:.2f}")
         
-        # Performance historique
-        st.markdown("---")
-        st.subheader("📊 Performance Historique")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        total_return = (df['Close'].iloc[-1] / df['Close'].iloc[0] - 1) * 100
-        annualized_return = ((df['Close'].iloc[-1] / df['Close'].iloc[0]) ** (252/len(df)) - 1) * 100
-        max_dd = ((df['Close'].cummax() - df['Close']) / df['Close'].cummax()).max() * 100
-        
-        with col1:
-            st.metric("📈 Rendement Total", f"{total_return:+.1f}%")
-        with col2:
-            st.metric("📅 Rendement Annualisé", f"{annualized_return:+.1f}%")
-        with col3:
-            st.metric("📉 Drawdown Maximum", f"-{max_dd:.1f}%")
-        
-        # Avertissement
-        st.markdown("---")
-        st.warning("⚠️ **Avertissement:** Cette analyse est basée sur des données historiques et ne constitue pas un conseil en investissement. Toujours faire ses propres recherches avant d'investir.")
+        st.caption("⚠️ Cette analyse ne constitue pas un conseil en investissement. Faites vos propres recherches.")
         
     except Exception as e:
-        st.error(f"❌ Erreur lors de l'analyse: {str(e)}")
-        st.info("💡 Vérifiez que le ticker est valide et réessayez.")
+        st.error(f"❌ Erreur: {str(e)}")
+        st.info("💡 Vérifiez le ticker et réessayez.")
 
 else:
-    # Page d'accueil
-    st.info("👈 Entrez un ticker dans la barre latérale et cliquez sur 'Lancer l'Analyse' pour commencer!")
+    # Page d'accueil moderne et compacte
     
-    st.markdown("## 📚 Guide d'utilisation")
-    
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([2, 1])
     
     with col1:
         st.markdown("""
         ### 🎯 Fonctionnalités
-        - **Analyse technique complète** avec tous les indicateurs
-        - **Visualisations interactives** (Prix, MACD, RSI, Volume)
-        - **Analyse de volatilité** et rendements
-        - **Support/Résistance** automatiques
-        - **Machine Learning** pour prédictions
-        - **Recommandations** d'achat/vente
+        
+        **📊 Analyse Technique Complète**
+        - Prix, Volume, MACD, RSI avec Bollinger Bands
+        - Moyennes mobiles (MA20, MA50, MA200)
+        - Support/Résistance automatiques, VWAP
+        
+        **💨 Volatilité & Rendements**
+        - Distribution des rendements quotidiens
+        - Rendements cumulatifs et Sharpe Ratio
+        - Corrélation Volume-Prix
+        
+        **🤖 Machine Learning**
+        - Random Forest pour prédictions
+        - Feature importance analysis
+        - Prix cible estimé du lendemain
         """)
     
     with col2:
         st.markdown("""
-        ### 💡 Exemples de tickers
-        - **AAPL** - Apple Inc.
+        ### 💡 Exemples
+        
+        - **AAPL** - Apple
         - **TSLA** - Tesla
         - **NVDA** - Nvidia
         - **GOOGL** - Google
         - **MSFT** - Microsoft
-        - **MU** - Micron Technology
+        - **MU** - Micron
+        - **META** - Meta
+        - **AMZN** - Amazon
         """)
     
-    st.markdown("""
-    ### 📊 Indicateurs Techniques Inclus
-    - **Moyennes Mobiles:** MA20, MA50, MA200
-    - **MACD:** Moving Average Convergence Divergence
-    - **RSI:** Relative Strength Index (14 jours)
-    - **Bandes de Bollinger:** Volatilité et niveaux de prix
-    - **VWAP:** Volume Weighted Average Price
-    - **Support/Résistance:** Niveaux techniques clés
-    
-    ### 🤖 Machine Learning
-    - Modèle **Random Forest** avec 100 arbres
-    - Prédiction des rendements du lendemain
-    - Analyse d'importance des features
-    - Évaluation avec R² et MSE
-    """)
+    st.info("👈 Entrez un ticker dans la sidebar et cliquez sur **Analyser** pour commencer!")
