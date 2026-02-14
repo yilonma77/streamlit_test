@@ -840,18 +840,16 @@ if analyze_button:
                 
                 with c1:
                     st.metric("📈 Rdt Prédit", f"{rf_next_pred*100:.2f}%")
-                        
-                        with c2:
-                            direction = "HAUSSIÈRE 📈" if next_day_pred > 0 else "BAISSIÈRE 📉"
-                            st.metric("🎯 Direction", direction)
-                        
-                        with c3:
-                            current_price = df['Close'].iloc[-1]
-                            target_price = current_price * (1 + next_day_pred)
-                            st.metric("💰 Prix Cible", f"${target_price:.2f}")
-                        
-                        confidence_level = "FORTE ⭐⭐⭐" if abs(next_day_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(next_day_pred) > 0.01 else "FAIBLE ⭐"
-                        st.info(f"🎯 Confiance: {confidence_level}")
+                
+                with c2:
+                    direction = "HAUSSIÈRE 📈" if rf_next_pred > 0 else "BAISSIÈRE 📉"
+                    st.metric("🎯 Direction", direction)
+                
+                with c3:
+                    st.metric("💰 Prix Cible", f"${rf_target:.2f}")
+                
+                confidence_level = "FORTE ⭐⭐⭐" if abs(rf_next_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(rf_next_pred) > 0.01 else "FAIBLE ⭐"
+                st.info(f"🎯 Confiance: {confidence_level}")
             
             # Régression Linéaire
             with subtab2:
