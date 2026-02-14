@@ -89,17 +89,6 @@ st.title("📈 Analyse Technique Pro")
 with st.sidebar:
     st.header("⚙️ Configuration")
     
-    # Toggle thème light/dark
-    theme_col1, theme_col2 = st.columns([1, 1])
-    with theme_col1:
-        if st.button("🌙 Dark" if st.session_state.theme == 'dark' else "☀️ Light", use_container_width=True):
-            st.session_state.theme = 'light' if st.session_state.theme == 'dark' else 'dark'
-            st.rerun()
-    with theme_col2:
-        st.caption(f"Thème: {st.session_state.theme.capitalize()}")
-    
-    st.markdown("---")
-    
     # Input du ticker
     ticker = st.text_input("🎯 Ticker:", value="MU", help="Ex: AAPL, TSLA, GOOGL").upper()
     
@@ -110,7 +99,7 @@ with st.sidebar:
         "3 ans": 1095,
         "5 ans": 1825
     }
-    period_label = st.selectbox("📅 Période:", list(period_options.keys()), index=3)
+    period_label = st.selectbox("📅 Période:", list(period_options.keys()), index=1)
     period_days = period_options[period_label]
     
     st.markdown("---")
@@ -579,8 +568,33 @@ def create_prediction_model(df, model_type='Random Forest', train_ratio=0.8):
     
     return model, feature_columns, test_data, predictions, r2, mse, feature_importance, coefficients_df
 
+# Initialiser les variables de session pour le cache
+if 'cached_df' not in st.session_state:
+    st.session_state.cached_df = None
+if 'cached_ticker' not in st.session_state:
+    st.session_state.cached_ticker = None
+if 'cached_period' not in st.session_state:
+    st.session_state.cached_period = None
+if 'cached_info' not in st.session_state:
+    st.session_state.cached_info = None
+if 'cached_latest' not in st.session_state:
+    st.session_state.cached_latest = None
+
+# Vérifier si on doit charger les données (nouvelle analyse ou changement de ticker/période)
+should_load_data = analyze_button or (
+    st.session_state.cached_df is not None and 
+    (st.session_state.cached_ticker != ticker or st.session_state.cached_period != period_days)
+)
+
+# Vérifier si on a des données en cache pour juste mettre à jour les ML
+has_cached_data = (
+    st.session_state.cached_df is not None and 
+    st.session_state.cached_ticker == ticker and 
+    st.session_state.cached_period == period_days
+)
+
 # Main application logic
-if analyze_button:
+if should_load_data:
     try:
         with st.spinner(f'🔄 Récupération des données pour {ticker}...'):
             # Récupération des données
@@ -622,6 +636,13 @@ if analyze_button:
             df = calculate_indicators(data)
         
         latest = df.iloc[-1]
+        
+        # Stocker dans le cache
+        st.session_state.cached_df = df
+        st.session_state.cached_ticker = ticker
+        st.session_state.cached_period = period_days
+        st.session_state.cached_info = info
+        st.session_state.cached_latest = latest
         
         # Métriques clés en haut
         col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -1010,6 +1031,414 @@ if analyze_button:
     except Exception as e:
         st.error(f"❌ Erreur: {str(e)}")
         st.info("💡 Vérifiez le ticker et réessayez.")
+
+elif has_cached_data:
+    # Utiliser les données en cache
+    df = st.session_state.cached_df
+    info = st.session_state.cached_info
+    latest = st.session_state.cached_latest
+    
+    # En-tête compact avec les infos essentielles
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.subheader(f"🏢 {info.get('longName', ticker)}")
+    with col2:
+        st.caption(f"📅 {len(df)} jours • {df.index[0].strftime('%Y-%m-%d')} → {df.index[-1].strftime('%Y-%m-%d')}")
+    
+    # Infos entreprise en compact
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.caption(f"💼 {info.get('sector', 'N/A')}")
+    with c2:
+        st.caption(f"🏭 {info.get('industry', 'N/A')[:18]}...")
+    with c3:
+        market_cap = info.get('marketCap', 0)
+        st.caption(f"💰 ${market_cap/1e9:.1f}B" if market_cap > 0 else "💰 N/A")
+    with c4:
+        employees = info.get('fullTimeEmployees', 'N/A')
+        st.caption(f"👥 {employees:,}" if isinstance(employees, int) else "👥 N/A")
+    
+    # Métriques clés en haut
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        price_change = ((latest['Close'] - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
+        st.metric("💲 Prix", f"${latest['Close']:.2f}", f"{price_change:+.2f}%")
+    
+    with col2:
+        rsi_color = "🔴" if latest['RSI'] > 70 else "🟢" if latest['RSI'] < 30 else "🟡"
+        st.metric(f"{rsi_color} RSI", f"{latest['RSI']:.1f}")
+    
+    with col3:
+        macd_status = "📈" if latest['MACD'] > 0 else "📉"
+        st.metric(f"{macd_status} MACD", f"{latest['MACD']:.4f}")
+    
+    with col4:
+        st.metric("💨 Vol.", f"{latest['Volatility']:.1f}%")
+    
+    with col5:
+        total_return = ((latest['Close'] / df['Close'].iloc[0] - 1) * 100)
+        st.metric(f"📈 Rdt {period_label}", f"{total_return:+.1f}%")
+    
+    with col6:
+        sharpe = (df['Daily_Return'].mean() / df['Daily_Return'].std()) * np.sqrt(252)
+        st.metric("⚡ Sharpe", f"{sharpe:.2f}")
+    
+    st.markdown("---")
+    
+    # Tabs pour organiser le contenu
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Graphiques Techniques", "💨 Volatilité", "🎯 Support/Résistance", "🤖 ML & Prédictions"])
+    
+    with tab1:
+        main_chart = create_main_chart(df, ticker)
+        st.plotly_chart(main_chart, use_container_width=True)
+    
+    with tab2:
+        vol_chart = create_volatility_chart(df, ticker)
+        st.plotly_chart(vol_chart, use_container_width=True)
+        
+        # Statistiques compactes
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("📊 Rdt Moy. Jour", f"{df['Daily_Return'].mean()*100:.3f}%")
+        with c2:
+            st.metric("📊 Écart-type", f"{df['Daily_Return'].std()*100:.3f}%")
+        with c3:
+            max_dd = ((df['Close'].cummax() - df['Close']) / df['Close'].cummax()).max() * 100
+            st.metric("📉 Drawdown Max", f"-{max_dd:.1f}%")
+        with c4:
+            annualized_return = ((df['Close'].iloc[-1] / df['Close'].iloc[0]) ** (252/len(df)) - 1) * 100
+            st.metric("📅 Rdt Annualisé", f"{annualized_return:+.1f}%")
+    
+    with tab3:
+        sr_chart = create_support_resistance_chart(df, ticker)
+        st.plotly_chart(sr_chart, use_container_width=True)
+        
+        # Niveaux techniques
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("🔻 Support", f"${latest['Support']:.2f}")
+        with c2:
+            st.metric("🔺 Résistance", f"${latest['Resistance']:.2f}")
+        with c3:
+            st.metric("💰 VWAP", f"${latest['VWAP']:.2f}")
+        with c4:
+            support_dist = ((latest['Close'] - latest['Support']) / latest['Close']) * 100
+            st.metric("📏 Distance Support", f"{support_dist:.1f}%")
+    
+    with tab4:
+        st.subheader("🤖 Machine Learning - Comparaison des Modèles")
+        st.caption("⚡ Les modèles se recalculent automatiquement quand vous changez le ratio Train/Test")
+        
+        # Calcul des 3 modèles en parallèle avec le nouveau ratio
+        with st.spinner('🤖 Entraînement des 3 modèles...'):
+            # Random Forest
+            rf_model, rf_features, rf_test, rf_pred, rf_r2, rf_mse, rf_importance, _ = create_prediction_model(
+                df, model_type='Random Forest', train_ratio=train_test_ratio/100
+            )
+            
+            # Régression Linéaire
+            lr_model, lr_features, lr_test, lr_pred, lr_r2, lr_mse, lr_importance, lr_coefficients = create_prediction_model(
+                df, model_type='Régression Linéaire', train_ratio=train_test_ratio/100
+            )
+            
+            # SVM
+            svm_model, svm_features, svm_test, svm_pred, svm_r2, svm_mse, svm_importance, _ = create_prediction_model(
+                df, model_type='SVM', train_ratio=train_test_ratio/100
+            )
+        
+        # Préparer les features pour les prédictions
+        features_df = df.copy()
+        lookback_days = 5
+        
+        for i in range(1, lookback_days + 1):
+            features_df[f'Close_lag_{i}'] = features_df['Close'].shift(i)
+            features_df[f'Volume_lag_{i}'] = features_df['Volume'].shift(i)
+            features_df[f'Return_lag_{i}'] = features_df['Daily_Return'].shift(i)
+        
+        features_df['Price_MA20_ratio'] = features_df['Close'] / features_df['MA_20']
+        features_df['Price_MA50_ratio'] = features_df['Close'] / features_df['MA_50']
+        features_df['RSI_level'] = features_df['RSI']
+        features_df['MACD_signal'] = (features_df['MACD'] > features_df['MACD_Signal']).astype(int)
+        features_df['BB_position'] = (features_df['Close'] - features_df['BB_Lower']) / (features_df['BB_Upper'] - features_df['BB_Lower'])
+        features_df['Vol_ratio'] = features_df['Volatility'] / features_df['Volatility'].mean()
+        
+        # Calculer les prédictions pour les 3 modèles
+        current_price = df['Close'].iloc[-1]
+        
+        # RF Prediction
+        rf_latest_features = features_df[rf_features].iloc[-1:].dropna(axis=1)
+        rf_common_features = [col for col in rf_features if col in rf_latest_features.columns]
+        rf_next_pred = 0
+        if len(rf_common_features) > 0:
+            rf_latest_X = rf_latest_features[rf_common_features]
+            rf_next_pred = rf_model.predict(rf_latest_X.values.reshape(1, -1))[0]
+        
+        # LR Prediction
+        lr_latest_features = features_df[lr_features].iloc[-1:].dropna(axis=1)
+        lr_common_features = [col for col in lr_features if col in lr_latest_features.columns]
+        lr_next_pred = 0
+        if len(lr_common_features) > 0:
+            lr_latest_X = lr_latest_features[lr_common_features]
+            lr_next_pred = lr_model.predict(lr_latest_X.values.reshape(1, -1))[0]
+        
+        # SVM Prediction
+        svm_latest_features = features_df[svm_features].iloc[-1:].dropna(axis=1)
+        svm_common_features = [col for col in svm_features if col in svm_latest_features.columns]
+        svm_next_pred = 0
+        if len(svm_common_features) > 0:
+            svm_latest_X = svm_latest_features[svm_common_features]
+            svm_next_pred = svm_model.predict(svm_latest_X.values.reshape(1, -1))[0]
+        
+        # Résumé des prédictions
+        st.markdown("### 🔮 Prédictions du Prochain Jour")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            rf_target = current_price * (1 + rf_next_pred)
+            rf_direction = "📈" if rf_next_pred > 0 else "📉"
+            st.metric(
+                "🌲 Random Forest",
+                f"${rf_target:.2f}",
+                f"{rf_next_pred*100:.2f}% {rf_direction}"
+            )
+        
+        with col2:
+            lr_target = current_price * (1 + lr_next_pred)
+            lr_direction = "📈" if lr_next_pred > 0 else "📉"
+            st.metric(
+                "📈 Régression Linéaire",
+                f"${lr_target:.2f}",
+                f"{lr_next_pred*100:.2f}% {lr_direction}"
+            )
+        
+        with col3:
+            svm_target = current_price * (1 + svm_next_pred)
+            svm_direction = "📈" if svm_next_pred > 0 else "📉"
+            st.metric(
+                "🎯 SVM",
+                f"${svm_target:.2f}",
+                f"{svm_next_pred*100:.2f}% {svm_direction}"
+            )
+        
+        st.caption(f"💰 Prix actuel: ${current_price:.2f}")
+        st.markdown("---")
+        
+        # Comparaison rapide des métriques
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("🌲 Random Forest R²", f"{rf_r2:.4f}")
+        with col2:
+            st.metric("📈 Régression R²", f"{lr_r2:.4f}")
+        with col3:
+            st.metric("🎯 SVM R²", f"{svm_r2:.4f}")
+        
+        # Sous-onglets pour chaque modèle
+        subtab1, subtab2, subtab3 = st.tabs(["🌲 Random Forest", "📈 Régression Linéaire", "🎯 SVM"])
+        
+        # Random Forest
+        with subtab1:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("📊 R² Score", f"{rf_r2:.4f}")
+            with col2:
+                st.metric("📉 MSE", f"{rf_mse:.6f}")
+            
+            st.caption("🔍 Top 10 Features Importantes")
+            top_features = rf_importance.head(10)
+            
+            fig_importance = go.Figure()
+            fig_importance.add_trace(
+                go.Bar(
+                    x=top_features['importance'],
+                    y=top_features['feature'],
+                    orientation='h',
+                    marker_color='#45aaf2'
+                )
+            )
+            template = 'plotly_dark' if st.session_state.theme == 'dark' else 'plotly_white'
+            fig_importance.update_layout(
+                template=template,
+                height=350,
+                margin=dict(t=20, b=20, l=10, r=10),
+                xaxis_title="Importance",
+                yaxis_title=""
+            )
+            st.plotly_chart(fig_importance, use_container_width=True)
+            
+            # Prédiction pour RF (déjà calculée)
+            st.caption("🔮 Détails de la Prédiction")
+            
+            c1, c2, c3 = st.columns(3)
+            
+            with c1:
+                st.metric("📈 Rdt Prédit", f"{rf_next_pred*100:.2f}%")
+            
+            with c2:
+                direction = "HAUSSIÈRE 📈" if rf_next_pred > 0 else "BAISSIÈRE 📉"
+                st.metric("🎯 Direction", direction)
+            
+            with c3:
+                st.metric("💰 Prix Cible", f"${rf_target:.2f}")
+            
+            confidence_level = "FORTE ⭐⭐⭐" if abs(rf_next_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(rf_next_pred) > 0.01 else "FAIBLE ⭐"
+            st.info(f"🎯 Confiance: {confidence_level}")
+        
+        # Régression Linéaire
+        with subtab2:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("📊 R² Score", f"{lr_r2:.4f}")
+            with col2:
+                st.metric("📉 MSE", f"{lr_mse:.6f}")
+            
+            # Coefficients et p-values
+            if lr_coefficients is not None:
+                st.caption("📊 Coefficients et Significativité (Top 15)")
+                
+                # Afficher seulement les top 15
+                top_coefs = lr_coefficients.head(15)
+                
+                # Formater le DataFrame pour affichage
+                display_df = top_coefs.copy()
+                display_df['coefficient'] = display_df['coefficient'].apply(lambda x: f"{x:.6f}")
+                display_df['p_value'] = display_df['p_value'].apply(lambda x: f"{x:.4f}")
+                display_df['significance'] = top_coefs['p_value'].apply(
+                    lambda x: '***' if x < 0.001 else '**' if x < 0.01 else '*' if x < 0.05 else ''
+                )
+                
+                st.dataframe(
+                    display_df,
+                    column_config={
+                        "feature": "Feature",
+                        "coefficient": "Coefficient",
+                        "p_value": "P-Value",
+                        "significance": "Sig."
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                st.caption("*** p<0.001, ** p<0.01, * p<0.05")
+            
+            st.info("ℹ️ La régression linéaire modélise une relation linéaire entre les features et le rendement.")
+            
+            # Prédiction pour LR (déjà calculée)
+            st.caption("🔮 Détails de la Prédiction")
+            
+            c1, c2, c3 = st.columns(3)
+            
+            with c1:
+                st.metric("📈 Rdt Prédit", f"{lr_next_pred*100:.2f}%")
+            
+            with c2:
+                direction = "HAUSSIÈRE 📈" if lr_next_pred > 0 else "BAISSIÈRE 📉"
+                st.metric("🎯 Direction", direction)
+            
+            with c3:
+                st.metric("💰 Prix Cible", f"${lr_target:.2f}")
+            
+            confidence_level = "FORTE ⭐⭐⭐" if abs(lr_next_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(lr_next_pred) > 0.01 else "FAIBLE ⭐"
+            st.info(f"🎯 Confiance: {confidence_level}")
+        
+        # SVM
+        with subtab3:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("📊 R² Score", f"{svm_r2:.4f}")
+            with col2:
+                st.metric("📉 MSE", f"{svm_mse:.6f}")
+            
+            st.info("ℹ️ SVM utilise un kernel RBF pour capturer des relations non-linéaires complexes.")
+            
+            # Prédiction pour SVM (déjà calculée)
+            st.caption("🔮 Détails de la Prédiction")
+            
+            c1, c2, c3 = st.columns(3)
+            
+            with c1:
+                st.metric("📈 Rdt Prédit", f"{svm_next_pred*100:.2f}%")
+            
+            with c2:
+                direction = "HAUSSIÈRE 📈" if svm_next_pred > 0 else "BAISSIÈRE 📉"
+                st.metric("🎯 Direction", direction)
+            
+            with c3:
+                st.metric("💰 Prix Cible", f"${svm_target:.2f}")
+            
+            confidence_level = "FORTE ⭐⭐⭐" if abs(svm_next_pred) > 0.02 else "MODÉRÉE ⭐⭐" if abs(svm_next_pred) > 0.01 else "FAIBLE ⭐"
+            st.info(f"🎯 Confiance: {confidence_level}")
+    
+    # Rapport de synthèse COMPACT après les tabs
+    st.markdown("---")
+    st.subheader("🎯 Synthèse & Recommandation")
+    
+    # Analyse de tendance
+    current_price = df['Close'].iloc[-1]
+    ma20 = df['MA_20'].iloc[-1]
+    ma50 = df['MA_50'].iloc[-1]
+    ma200 = df['MA_200'].iloc[-1]
+    current_rsi = df['RSI'].iloc[-1]
+    current_macd = df['MACD'].iloc[-1]
+    current_vol = df['Volatility'].iloc[-1]
+    avg_vol = df['Volatility'].mean()
+    
+    # Signaux haussiers
+    bullish_signals = sum([
+        current_price > ma20,
+        current_price > ma50,
+        current_price > ma200,
+        current_macd > 0,
+        30 <= current_rsi <= 70
+    ])
+    
+    # Tendance globale
+    if bullish_signals >= 4:
+        trend = "🟢 HAUSSIÈRE FORTE"
+    elif bullish_signals >= 3:
+        trend = "🟡 HAUSSIÈRE MODÉRÉE"
+    elif bullish_signals >= 2:
+        trend = "🟠 NEUTRE"
+    else:
+        trend = "🔴 BAISSIÈRE"
+    
+    # Analyse et recommandation en 2 colonnes
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"**Tendance: {trend}**")
+        st.caption("📈 Signaux Techniques:")
+        st.caption(f"• MA20: {'✅' if current_price > ma20 else '❌'} ${ma20:.2f}")
+        st.caption(f"• MA50: {'✅' if current_price > ma50 else '❌'} ${ma50:.2f}")
+        st.caption(f"• MA200: {'✅' if current_price > ma200 else '❌'} ${ma200:.2f}")
+        
+        rsi_status = "SURACHETÉ ⚠️" if current_rsi > 70 else "SURVENDU ✅" if current_rsi < 30 else "NEUTRE"
+        st.caption(f"• RSI ({current_rsi:.1f}): {rsi_status}")
+        macd_status = "HAUSSIER ✅" if current_macd > 0 else "BAISSIER ⚠️"
+        st.caption(f"• MACD: {macd_status}")
+        vol_status = "ÉLEVÉE ⚠️" if current_vol > avg_vol * 1.2 else "NORMALE ✅"
+        st.caption(f"• Volatilité: {vol_status}")
+    
+    with col2:
+        st.markdown("**💡 Recommandation:**")
+        
+        if bullish_signals >= 4:
+            st.success("✅ ACHAT RECOMMANDÉ - Tendance forte")
+        elif bullish_signals >= 3:
+            st.warning("🟡 ACHAT PRUDENT - Tendance positive")
+        elif bullish_signals >= 2:
+            st.info("⏸️ ATTENTE - Signaux mixtes")
+        else:
+            st.error("❌ ÉVITER - Tendance baissière")
+        
+        st.caption("**🎯 Niveaux Clés:**")
+        support = df['Support'].iloc[-1]
+        resistance = df['Resistance'].iloc[-1]
+        st.caption(f"🟢 Achat: ${support:.2f}-${support*1.02:.2f}")
+        st.caption(f"🔴 Stop: ${support*0.98:.2f}")
+        st.caption(f"🎯 Obj: ${resistance*.98:.2f}-${resistance*1.02:.2f}")
+    
+    st.caption("⚠️ Cette analyse ne constitue pas un conseil en investissement. Faites vos propres recherches.")
 
 else:
     # Page d'accueil moderne et compacte
