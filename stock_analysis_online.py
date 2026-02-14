@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error, r2_score
 import warnings
 
@@ -109,6 +111,27 @@ with st.sidebar:
     }
     period_label = st.selectbox("📅 Période:", list(period_options.keys()), index=3)
     period_days = period_options[period_label]
+    
+    st.markdown("---")
+    
+    # Options Machine Learning
+    st.markdown("**🤖 Machine Learning:**")
+    
+    ml_model = st.selectbox(
+        "Modèle de prédiction:",
+        ["Random Forest", "Régression Linéaire", "SVM"],
+        index=0
+    )
+    
+    train_test_ratio = st.slider(
+        "Ratio Train/Test:",
+        min_value=50,
+        max_value=90,
+        value=80,
+        step=5,
+        help="Pourcentage des données pour l'entraînement"
+    )
+    st.caption(f"Train: {train_test_ratio}% | Test: {100-train_test_ratio}%")
     
     # Bouton d'analyse
     analyze_button = st.button("🚀 Analyser", type="primary", use_container_width=True)
@@ -444,8 +467,14 @@ def create_support_resistance_chart(df, ticker_symbol):
     return fig_sr
 
 # Fonction pour la modélisation prédictive
-def create_prediction_model(df):
-    """Crée et entraîne le modèle de prédiction"""
+def create_prediction_model(df, model_type='Random Forest', train_ratio=0.8):
+    """Crée et entraîne le modèle de prédiction
+    
+    Args:
+        df: DataFrame avec les données
+        model_type: Type de modèle ('Random Forest', 'Régression Linéaire', 'SVM')
+        train_ratio: Ratio de données pour l'entraînement (0-1)
+    """
     
     # Création des features
     lookback_days = 5
@@ -476,8 +505,8 @@ def create_prediction_model(df):
     # Nettoyage
     ml_clean = features_df[feature_columns + ['Target']].dropna()
     
-    # Division train/test
-    split_point = int(len(ml_clean) * 0.8)
+    # Division train/test avec ratio personnalisable
+    split_point = int(len(ml_clean) * train_ratio)
     train_data = ml_clean.iloc[:split_point]
     test_data = ml_clean.iloc[split_point:]
     
@@ -486,22 +515,36 @@ def create_prediction_model(df):
     X_test = test_data[feature_columns]
     y_test = test_data['Target']
     
-    # Random Forest
-    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
-    rf_model.fit(X_train, y_train)
-    rf_pred = rf_model.predict(X_test)
+    # Sélection du modèle
+    if model_type == 'Random Forest':
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+    elif model_type == 'Régression Linéaire':
+        model = LinearRegression()
+    else:  # SVM
+        model = SVR(kernel='rbf', C=100, gamma=0.1, epsilon=.1)
+    
+    # Entraînement
+    model.fit(X_train, y_train)
+    predictions = model.predict(X_test)
     
     # Métriques
-    rf_mse = mean_squared_error(y_test, rf_pred)
-    rf_r2 = r2_score(y_test, rf_pred)
+    mse = mean_squared_error(y_test, predictions)
+    r2 = r2_score(y_test, predictions)
     
-    # Feature importance
-    feature_importance = pd.DataFrame({
-        'feature': feature_columns,
-        'importance': rf_model.feature_importances_
-    }).sort_values('importance', ascending=False)
+    # Feature importance (seulement pour Random Forest)
+    if model_type == 'Random Forest':
+        feature_importance = pd.DataFrame({
+            'feature': feature_columns,
+            'importance': model.feature_importances_
+        }).sort_values('importance', ascending=False)
+    else:
+        # Pour les autres modèles, créer un DataFrame vide
+        feature_importance = pd.DataFrame({
+            'feature': feature_columns,
+            'importance': [0] * len(feature_columns)
+        })
     
-    return rf_model, feature_columns, test_data, rf_pred, rf_r2, rf_mse, feature_importance
+    return model, feature_columns, test_data, predictions, r2, mse, feature_importance
 
 # Main application logic
 if analyze_button:
@@ -619,41 +662,46 @@ if analyze_button:
                 st.metric("📏 Distance Support", f"{support_dist:.1f}%")
         
         with tab4:
-            st.subheader("🤖 Machine Learning - Random Forest")
-        
-            st.subheader("🤖 Machine Learning - Random Forest")
+            st.subheader(f"🤖 Machine Learning - {ml_model}")
             
             with st.spinner('🤖 Entraînement du modèle...'):
-                rf_model, feature_columns, test_data, rf_pred, rf_r2, rf_mse, feature_importance = create_prediction_model(df)
+                rf_model, feature_columns, test_data, rf_pred, rf_r2, rf_mse, feature_importance = create_prediction_model(df, model_type=ml_model, train_ratio=train_test_ratio/100)
             
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("📊 R² Score", f"{rf_r2:.4f}")
             with col2:
                 st.metric("📉 MSE", f"{rf_mse:.6f}")
+            with col3:
+                train_pct = train_test_ratio
+                test_pct = 100 - train_test_ratio
+                st.metric("📊 Split", f"{train_pct}% / {test_pct}%")
             
-            # Feature importance compact
-            st.caption("🔍 Top 10 Features Importantes")
-            top_features = feature_importance.head(10)
-            
-            fig_importance = go.Figure()
-            fig_importance.add_trace(
-                go.Bar(
-                    x=top_features['importance'],
-                    y=top_features['feature'],
-                    orientation='h',
-                    marker_color='#45aaf2'
+            # Feature importance compact (seulement pour Random Forest)
+            if ml_model == 'Random Forest':
+                st.caption("🔍 Top 10 Features Importantes")
+                top_features = feature_importance.head(10)
+                
+                fig_importance = go.Figure()
+                fig_importance.add_trace(
+                    go.Bar(
+                        x=top_features['importance'],
+                        y=top_features['feature'],
+                        orientation='h',
+                        marker_color='#45aaf2'
+                    )
                 )
-            )
-            template = 'plotly_dark' if st.session_state.theme == 'dark' else 'plotly_white'
-            fig_importance.update_layout(
-                template=template,
-                height=350,
-                margin=dict(t=20, b=20, l=10, r=10),
-                xaxis_title="Importance",
-                yaxis_title=""
-            )
-            st.plotly_chart(fig_importance, use_container_width=True)
+                template = 'plotly_dark' if st.session_state.theme == 'dark' else 'plotly_white'
+                fig_importance.update_layout(
+                    template=template,
+                    height=350,
+                    margin=dict(t=20, b=20, l=10, r=10),
+                    xaxis_title="Importance",
+                    yaxis_title=""
+                )
+                st.plotly_chart(fig_importance, use_container_width=True)
+            else:
+                st.info(f"ℹ️ L'importance des features est disponible uniquement pour Random Forest")
             
             # Prédiction compacte
             st.caption("🔮 Prédiction Prochain Jour")
@@ -681,7 +729,7 @@ if analyze_button:
                 latest_X = latest_features[common_features]
                 
                 if len(latest_X.columns) > 0:
-                    next_day_pred = rf_model.predict(latest_X.values.reshape(1, -1))[0]
+                    next_day_pred = model.predict(latest_X.values.reshape(1, -1))[0]
                     
                     c1, c2, c3 = st.columns(3)
                     
