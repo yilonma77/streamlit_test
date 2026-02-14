@@ -5,3 +5,4 @@ plotly
 numpy
 scikit-learn
 scipy
+googletrans==4.0.0rc1
