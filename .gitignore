@@ -10,6 +10,7 @@ ENV/
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
+!EoD/EoD_recap.ipynb
 
 # Data files
 *.json
