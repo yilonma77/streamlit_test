@@ -7,8 +7,8 @@ import os
 
 # Configuration de la page
 st.set_page_config(
-    page_title="Notes Réglementaires",
-    page_icon="📝",
+    page_title="EoD Report",
+    page_icon="📊",
     layout="wide"
 )
 
@@ -25,6 +25,7 @@ def load_data():
         "taiwan": "",
         "hong_kong": "",
         "australia": "",
+        "japan": "",
         "last_updated": None
     }
 
@@ -54,7 +55,7 @@ def save_data(data):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 # En-tête de l'application
-st.title("📝 Notes Réglementaires - Marchés Asiatiques")
+st.title("� EoD Report - Marchés Asiatiques")
 st.markdown("---")
 
 # Sidebar pour les options
@@ -71,10 +72,12 @@ with st.sidebar:
     taiwan_chars = len(data.get("taiwan", ""))
     hk_chars = len(data.get("hong_kong", ""))
     aus_chars = len(data.get("australia", ""))
+    japan_chars = len(data.get("japan", ""))
 
     st.metric("🇹🇼 Taiwan", f"{taiwan_chars} caractères")
     st.metric("🇭🇰 Hong Kong", f"{hk_chars} caractères")
     st.metric("🇦🇺 Australia", f"{aus_chars} caractères")
+    st.metric("🇯🇵 Japan", f"{japan_chars} caractères")
 
     st.markdown("---")
 
@@ -93,7 +96,8 @@ with st.sidebar:
         df = pd.DataFrame([
             {"Marché": "Taiwan 🇹🇼", "Notes": data.get("taiwan", "")},
             {"Marché": "Hong Kong 🇭🇰", "Notes": data.get("hong_kong", "")},
-            {"Marché": "Australia 🇦🇺", "Notes": data.get("australia", "")}
+            {"Marché": "Australia 🇦🇺", "Notes": data.get("australia", "")},
+            {"Marché": "Japan 🇯🇵", "Notes": data.get("japan", "")}
         ])
         csv = df.to_csv(index=False, encoding='utf-8-sig')
         st.download_button(
@@ -108,7 +112,7 @@ with st.sidebar:
 data = load_data()
 
 # Créer les colonnes pour une meilleure organisation
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     st.subheader("🇹🇼 Taiwan")
@@ -117,7 +121,7 @@ with col1:
         value=data.get("taiwan", ""),
         height=300,
         key="taiwan_text",
-        placeholder="Entrez vos notes sur les régulations de Taiwan..."
+        placeholder="Entrez vos notes EoD pour Taiwan..."
     )
 
 with col2:
@@ -127,7 +131,7 @@ with col2:
         value=data.get("hong_kong", ""),
         height=300,
         key="hk_text",
-        placeholder="Entrez vos notes sur les régulations de Hong Kong..."
+        placeholder="Entrez vos notes EoD pour Hong Kong..."
     )
 
 with col3:
@@ -137,7 +141,17 @@ with col3:
         value=data.get("australia", ""),
         height=300,
         key="aus_text",
-        placeholder="Entrez vos notes sur les régulations de Australia..."
+        placeholder="Entrez vos notes EoD pour Australia..."
+    )
+
+with col4:
+    st.subheader("🇯🇵 Japan")
+    japan_note = st.text_area(
+        "Notes pour Japan",
+        value=data.get("japan", ""),
+        height=300,
+        key="japan_text",
+        placeholder="Entrez vos notes EoD pour Japan..."
     )
 
 # Boutons d'action
@@ -149,7 +163,8 @@ with col_btn1:
         new_data = {
             "taiwan": taiwan_note,
             "hong_kong": hk_note,
-            "australia": aus_note
+            "australia": aus_note,
+            "japan": japan_note
         }
         save_data(new_data)
         st.success("✅ Données sauvegardées avec succès!")
@@ -165,7 +180,8 @@ with col_btn3:
             new_data = {
                 "taiwan": "",
                 "hong_kong": "",
-                "australia": ""
+                "australia": "",
+                "japan": ""
             }
             save_data(new_data)
             st.session_state.confirm_delete = False
@@ -203,7 +219,7 @@ with st.expander("📜 Historique des modifications"):
 st.markdown("---")
 st.markdown(
     """<div style='text-align: center'>
-    <p>📝 Application de Notes Réglementaires | 
+    <p>� Application EoD Report | 
     Données sauvegardées localement | 
     © 2026</p>
     </div>""", 
